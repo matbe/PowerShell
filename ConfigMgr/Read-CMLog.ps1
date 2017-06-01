@@ -149,7 +149,7 @@ Function Read-CMLogfile([array]$paths) {
 #-----------------------------------------------------------[Execution]------------------------------------------------------------
 
 If($Gridview){
-    Read-CMLogfile -path $path |Where-Object {$_.Type -ge ([LogType]::($LogLevel).value__)} |Sort-Object DateTime | Out-GridView -Title "Powershell Logviewer by Mattias Benninge" 
+    Read-CMLogfile -path $path |Where-Object {$_.Type -ge ([LogType]::($LogLevel).value__)} |Sort-Object DateTime | Out-GridView -Title "Powershell Logviewer by Mattias Benninge" -Wait
 }
 Elseif($passthru){
     Read-CMLogfile -path $path |Where-Object {$_.Type -ge ([LogType]::($LogLevel).value__)}
