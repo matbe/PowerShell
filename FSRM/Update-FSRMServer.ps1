@@ -134,7 +134,8 @@ param (
 
 Function Update-FsrmFileGroup{
     try{
-        Set-FsrmFileGroup -Name "Ransomware_Extensions" –IncludePattern $ransompattern -ErrorAction Stop |Out-Null
+        #set-FsrmFileGroup -name "Ransomware_Extensions" -IncludePattern @((Invoke-WebRequest -Uri "https://fsrm.experiant.ca/api/v1/combined" -UseBasicParsing).content | convertfrom-json | % {$_.filters}) 
+	Set-FsrmFileGroup -Name "Ransomware_Extensions" –IncludePattern $ransompattern -ErrorAction Stop |Out-Null
         Write-Log -Message "Updated Ransomware File Group"
         }
         catch
@@ -146,7 +147,6 @@ Function Update-FsrmFileGroup{
 Function Update-FsrmSetting{
 
     try{
-        #set-FsrmFileGroup -name "Ransomware_Extensions" -IncludePattern @((Invoke-WebRequest -Uri "https://fsrm.experiant.ca/api/v1/combined" -UseBasicParsing).content | convertfrom-json | % {$_.filters}) 
         set-FsrmSetting -AdminEmailAddress $AdminEmail -SmtpServer $SMTPServer -FromEmailAddress $SMTPFrom -ErrorAction Stop |Out-Null
         Write-Log -Message "Updated FSRM Settings to: AdminEmailAddress $AdminEmail, SmtpServer $SMTPServer, FromEmailAddress $SMTPFrom"
     }
