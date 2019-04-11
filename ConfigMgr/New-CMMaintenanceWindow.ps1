@@ -91,7 +91,7 @@ KNOWN ISSUES:
 COMMENT: 
 
 .LINK 
-http://www.codeplex.com
+https://github.com/matbe/PowerShell/blob/master/ConfigMgr/New-CMMaintenanceWindow.ps1
 		
 #>
 
