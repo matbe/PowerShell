@@ -91,7 +91,6 @@ Function Test-CMMPUrl {
                 Try {
                 
                     if ($HTTPS) { 
-                        $url = "https" + $url
                         #hash table of parameter values for Invoke-Webrequest
                         $paramHash = @{
                             UseBasicParsing  = $True
@@ -104,7 +103,6 @@ Function Test-CMMPUrl {
                         }
                     }
                     else {
-                        $url = "http" + $url
                         #hash table of parameter values for Invoke-Webrequest
                         $paramHash = @{
                             UseBasicParsing  = $True
