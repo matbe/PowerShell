@@ -1,0 +1,1 @@
+Powershell.exe -executionpolicy unrestricted -File %~dp0Assign-AutoPilotDevice.ps1

@@ -1,0 +1,3 @@
+AutoPilot-VM=AutoPilot-VM
+Friendly name=TAG002
+This is another GroupTag=TAG003
