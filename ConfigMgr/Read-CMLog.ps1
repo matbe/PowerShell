@@ -110,7 +110,7 @@ Function Read-CMLogfile([array]$paths) {
                     $metaarray = $metadata[1] -split '"'
 
                     # Rebuild the result into a custom PSObject
-                    $result += $logtext |select-object @{Label="LogText";Expression={$logtext}}, @{Label="Type";Expression={[LogType]$metaarray[9]}},@{Label="Component";Expression={$metaarray[5]}},@{Label="DateTime";Expression={[datetime]::ParseExact($metaarray[3]+($metaarray[1]).Split("-")[0].ToString(), "MM-dd-yyyyHH:mm:ss.fff", $null)}},@{Label="Thread";Expression={$metaarray[11]}}
+                    $result += $logtext |select-object @{Label="LogText";Expression={$logtext}}, @{Label="Type";Expression={[LogType]$metaarray[9]}},@{Label="Component";Expression={$metaarray[5]}},@{Label="DateTime";Expression={[datetime]::ParseExact($metaarray[3]+($metaarray[1]).Split("-")[0].Split("+")[0].ToString(), "MM-dd-yyyyHH:mm:ss.fff", $null)}},@{Label="Thread";Expression={$metaarray[11]}}
                 }        
             }
         }
@@ -134,7 +134,12 @@ Function Read-CMLogfile([array]$paths) {
                     $metaarray = $metadata[1] -split '><'
                     If($logtext){
                         # Rebuild the result into a custom PSObject
-                        $result += $logtext |select-object @{Label="LogText";Expression={$logtext}}, @{Label="Type";Expression={[LogType]0}},@{Label="Component";Expression={$metaarray[0]}},@{Label="DateTime";Expression={[datetime]::ParseExact(($metaarray[1]).Substring(0, ($metaarray[1]).Length - (($metaarray[1]).Length - ($metaarray[1]).LastIndexOf("-"))), "MM-dd-yyyy HH:mm:ss.fff", $null)}},@{Label="Thread";Expression={($metaarray[2] -split " ")[0].Substring(7)}}
+                        If($metaarray[1] -match '\+'){
+                            $result += $logtext |select-object @{Label="LogText";Expression={$logtext}}, @{Label="Type";Expression={[LogType]0}},@{Label="Component";Expression={$metaarray[0]}},@{Label="DateTime";Expression={[datetime]::ParseExact(($metaarray[1]).Substring(0, ($metaarray[1]).Length - (($metaarray[1]).Length - ($metaarray[1]).LastIndexOf("+"))), "MM-dd-yyyy HH:mm:ss.fff", $null)}},@{Label="Thread";Expression={($metaarray[2] -split " ")[0].Substring(7)}}
+                        }
+                        else{
+                            $result += $logtext |select-object @{Label="LogText";Expression={$logtext}}, @{Label="Type";Expression={[LogType]0}},@{Label="Component";Expression={$metaarray[0]}},@{Label="DateTime";Expression={[datetime]::ParseExact(($metaarray[1]).Substring(0, ($metaarray[1]).Length - (($metaarray[1]).Length - ($metaarray[1]).LastIndexOf("-"))), "MM-dd-yyyy HH:mm:ss.fff", $null)}},@{Label="Thread";Expression={($metaarray[2] -split " ")[0].Substring(7)}}
+                        }
                     }
                 }
             }
