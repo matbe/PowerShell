@@ -406,7 +406,13 @@ If ($GroupTag) {
 
     do {
         Show-Menu -Title GroupTag
+        #Remove $selection if it has previous been casted as an Int
+        Remove-Variable -Name selection -Force -ErrorAction SilentlyContinue
+        
         $selection = Read-Host "Please make a selection"
+        
+        # Make sure that $selection is an [int] if a number has been selected.
+        if($selection -match "[0-9]"){ [int]$selection = $selection}
    
         If ($selection -ge 0 -and $selection -lt $grouptagselection.Count) {
            
