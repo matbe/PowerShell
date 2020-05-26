@@ -1,7 +1,7 @@
 ﻿  
 <#
 .SYNOPSIS
-  Creates a backup of a category from technet gallery which will be discontinues in June 2020.
+  Creates a backup of a category from technet gallery which will be discontinued in June 2020.
 
 .NOTES
   Version:        1.0
@@ -19,13 +19,20 @@
 
 #>
 
-
+# Parameters, Edit these!
 #output folder (must already exist)
-$Backup_output_Folder = "c:\temp\TechnetGallery"
+$Backup_output_Folder = "D:\temp\TechnetGallery\EMS\AAD"
 
 # The link of the category/user you want to backup, this link downloads everything in the "configmanager" catagory
-$link = 'https://gallery.technet.microsoft.com/site/search?f%5B0%5D.Type=RootCategory&f%5B0%5D.Value=SystemCenter&f%5B0%5D.Text=System%20Center&f%5B1%5D.Type=SubCategory&f%5B1%5D.Value=configmanager&f%5B1%5D.Text=Configuration%20Manager'
 
+#ConfigMgr The link of the category/user you want to backup, this link downloads everything in the "configmanager" catagory
+#$link = 'https://gallery.technet.microsoft.com/site/search?f%5B0%5D.Type=RootCategory&f%5B0%5D.Value=SystemCenter&f%5B0%5D.Text=System%20Center&f%5B1%5D.Type=SubCategory&f%5B1%5D.Value=configmanager&f%5B1%5D.Text=Configuration%20Manager'
+
+#EMS The link of the category/user you want to backup, this link downloads everything in the "EMS/Azure Active Directory" catagory
+$link = 'https://gallery.technet.microsoft.com/site/search?f%5B0%5D.Type=RootCategory&f%5B0%5D.Value=enterprisemobility%2Bsecurity&f%5B0%5D.Text=Enterprise%20Mobility%20%2B%20Security&f%5B1%5D.Type=SubCategory&f%5B1%5D.Value=enterprisemobility%2Bsecurity_azureactivedirectory&f%5B1%5D.Text=Azure%20Active%20Directory'
+
+
+#------- Script Start -------
 #Base url for the technet gallery
 $Basic_Technet_Link = "https://gallery.technet.microsoft.com"
 
@@ -43,8 +50,9 @@ for ($i=1; $i -le $Get_Last_Page; $i++)
         $Current_Link = $link +  "&pageIndex=$i"	
 		$Parse_Current_Page = Invoke-WebRequest -Uri $Current_Link | select *
 		$Current_Page_Content = $Parse_Current_Page.links | Foreach {$_.href }
-		$Current_Page_Links = $Current_Page_Content | Select-String -Pattern 'about:' | Select-String -Pattern "/site/" -NotMatch  | Select-String -Pattern "about:blank#" -NotMatch | Select-String -Pattern "about:/Account/" -NotMatch	
-		$Contrib_Obj = New-Object PSObject
+		$Current_Page_Links = $Current_Page_Content | Select-String -Pattern 'about:','^/' | Select-String -Pattern "/site/" -NotMatch  | Select-String -Pattern "about:blank#" -NotMatch | Select-String -Pattern "about:/Account/" -NotMatch	| Select-String -Pattern "/Account/" -NotMatch	
+		#$Current_Page_Links = $Current_Page_Content | Select-String -Pattern '^/' | Select-String -Pattern "/site/" -NotMatch  | Select-String -Pattern "about:blank#" -NotMatch | Select-String -Pattern "about:/Account/" -NotMatch | Select-String -Pattern "/Account/" -NotMatch		
+        $Contrib_Obj = New-Object PSObject
 		$Contrib_Obj | Add-Member NoteProperty -Name "Link" -Value $Current_Page_Links	
 		$Contrib_Array += $Contrib_Obj	
 	}
@@ -59,7 +67,8 @@ ForEach($Contrib in $Contrib_Array.link)
 			Write-Progress -Activity "Backup Technet Gallery contributions" -status "Contribution $i / $Number_of_contributions - $Percent_Progress %"
 					
 			$Contrib_Sring = [string]$Contrib
-			$Contrib_To_Get = $Basic_Technet_Link + $Contrib_Sring.split(':')[1]
+            If($Contrib_Sring -match ":") { $Contrib_Sring  = $Contrib_Sring.split(':')[1] }
+			$Contrib_To_Get = $Basic_Technet_Link + $Contrib_Sring
 			$Parse_Contrib_Link = Invoke-WebRequest -Uri $Contrib_To_Get | select *
 					
 			$Parse_Contrib_Body = $Parse_Contrib_Link.ParsedHtml.body
