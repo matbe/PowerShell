@@ -1,5 +1,4 @@
-﻿  
-<#
+﻿<#
 .SYNOPSIS
   Creates a backup of a category from technet gallery which will be discontinued in June 2020.
 
@@ -21,15 +20,13 @@
 
 # Parameters, Edit these!
 #output folder (must already exist)
-$Backup_output_Folder = "D:\temp\TechnetGallery\EMS\AAD"
-
-# The link of the category/user you want to backup, this link downloads everything in the "configmanager" catagory
+$Backup_output_Folder = "D:\temp\TechnetGallery\ConfigMgr"
 
 #ConfigMgr The link of the category/user you want to backup, this link downloads everything in the "configmanager" catagory
-#$link = 'https://gallery.technet.microsoft.com/site/search?f%5B0%5D.Type=RootCategory&f%5B0%5D.Value=SystemCenter&f%5B0%5D.Text=System%20Center&f%5B1%5D.Type=SubCategory&f%5B1%5D.Value=configmanager&f%5B1%5D.Text=Configuration%20Manager'
+$link = 'https://gallery.technet.microsoft.com/site/search?f%5B0%5D.Type=RootCategory&f%5B0%5D.Value=SystemCenter&f%5B0%5D.Text=System%20Center&f%5B1%5D.Type=SubCategory&f%5B1%5D.Value=configmanager&f%5B1%5D.Text=Configuration%20Manager'
 
 #EMS The link of the category/user you want to backup, this link downloads everything in the "EMS/Azure Active Directory" catagory
-$link = 'https://gallery.technet.microsoft.com/site/search?f%5B0%5D.Type=RootCategory&f%5B0%5D.Value=enterprisemobility%2Bsecurity&f%5B0%5D.Text=Enterprise%20Mobility%20%2B%20Security&f%5B1%5D.Type=SubCategory&f%5B1%5D.Value=enterprisemobility%2Bsecurity_azureactivedirectory&f%5B1%5D.Text=Azure%20Active%20Directory'
+#$link = 'https://gallery.technet.microsoft.com/site/search?f%5B0%5D.Type=RootCategory&f%5B0%5D.Value=enterprisemobility%2Bsecurity&f%5B0%5D.Text=Enterprise%20Mobility%20%2B%20Security&f%5B1%5D.Type=SubCategory&f%5B1%5D.Value=enterprisemobility%2Bsecurity_azureactivedirectory&f%5B1%5D.Text=Azure%20Active%20Directory'
 
 
 #------- Script Start -------
@@ -89,7 +86,7 @@ ForEach($Contrib in $Contrib_Array.link)
 					
 			$full_link = "$Basic_Technet_Link/$Get_Contrib_Link"
 					
-			$Get_Contrib_Title = ($Get_Contrib_Title_NoFormat -Replace'[\/:*?"<>|()]'," ").replace("]","").replace(" ","_")
+			$Get_Contrib_Title = ($Get_Contrib_Title_NoFormat -Replace'[\\/:*?"<>|()]'," ").replace("[","").replace("]","").replace(" ","_")
 					
 			write-host ""
 			write-host "Working on the contribution $Get_Contrib_Title" -foreground "cyan"
@@ -153,4 +150,3 @@ foreach($folder in $createdfolders)
     }
     catch {}
 }
-
