@@ -26,7 +26,7 @@
   Overwrites the file without asking.
 
 .NOTES
-  Version:        1.0
+  Version:        1.1
   Author:         Mattias Benninge
   Creation Date:  2020-07-01
   Purpose/Change: Initial script development
@@ -37,97 +37,175 @@
   
   Download the latest version for the Beta channel and overwrite any existing file
   .\Get-EdgeEnterpriseMSI.ps1 -Channel Beta -Folder D:\SourceCode\PowerShell\Div -Force
-  
+
 #>
-[CmdletBinding()]
 param(
+  [CmdletBinding()]
   [Parameter(Mandatory = $True, HelpMessage = 'Channel to download, Valid Options are: Dev, Beta, Stable, EdgeUpdate, Policy')]
   [ValidateSet('Dev', 'Beta', 'Stable', 'EdgeUpdate', 'Policy')]
-  [string]$Channel,    
+  [string]$Channel,
+  
   [Parameter(Mandatory = $True, HelpMessage = 'Folder where the file will be downloaded')]
   [ValidateNotNullOrEmpty()]
   [string]$Folder,
+
   [Parameter(Mandatory = $false, HelpMessage = 'Platform to download, Valid Options are: Windows or MacOS')]
   [ValidateSet('Windows', 'MacOS', 'any')]
   [string]$Platform = "Windows",
+
   [Parameter(Mandatory = $false, HelpMessage = "Architecture to download, Valid Options are: x86, x64, arm64, any")]
   [ValidateSet('x86', 'x64', 'arm64', 'any')]
   [string]$Architecture = "x64",
+
   [parameter(Mandatory = $false, HelpMessage = "Specifies which version to download")]
   [ValidateNotNullOrEmpty()]
   [string]$ProductVersion,
+
   [parameter(Mandatory = $false, HelpMessage = "Overwrites the file without asking")]
   [Switch]$Force
 )
 
-Write-Host "Getting available files from https://edgeupdates.microsoft.com/api/products?view=enterprise" -ForegroundColor Green
-$response = Invoke-WebRequest -Uri "https://edgeupdates.microsoft.com/api/products?view=enterprise" -Method Get -ContentType "application/json" -ErrorAction Stop
-$jsonObj = ConvertFrom-Json $([String]::new($response.Content))
-Write-Host "Succefully retrived data" -ForegroundColor Green
+$ErrorActionPreference = "Stop"
+
+$edgeEnterpriseMSIUri = 'https://edgeupdates.microsoft.com/api/products?view=enterprise'
+
+# Validating parameters to reduce user errors
+if ($Channel -eq "Policy" -and ($Architecture -ne "Any" -or $Platform -ne "Any")) {
+  Write-Warning ("Channel 'Policy' requested, but either 'Architecture' and/or 'Platform' is not set to 'Any'. 
+                  Setting Architecture and Platform to 'Any'")
+
+  $Architecture = "Any"
+  $Platform = "Any"
+} 
+elseif ($Channel -ne "Policy" -and ($Architecture -eq "Any" -or $Platform -eq "Any")) {
+  throw "If Channel isn't set to policy, architecture and/or platform can't be set to 'Any'"
+}
+elseif ($Channel -eq "EdgeUpdate" -and ($Architecture -ne "x86" -or $Platform -eq "Windows")) {
+  Write-Warning ("Channel 'EdgeUpdate' requested, but either 'Architecture' is not set to x86 and/or 'Platform' 
+                  is not set to 'Windows'. Setting Architecture to 'x86' and Platform to 'Windows'")
+
+  $Architecture = "x86"
+  $Platform = "Windows"
+}
+
+# Test if HTTP status code 200 is returned from URI
+try {
+  Invoke-WebRequest $edgeEnterpriseMSIUri | where StatusCode -match 200 | Out-Null
+}
+catch {
+  throw "Unable to get HTTP status code 200 from $edgeEnterpriseMSIUri. Does the URL still exist?"
+}
+
+Write-Host "Getting available files from $edgeEnterpriseMSIUri" -ForegroundColor Green
+
+# Try to get JSON data from Microsoft
+try {
+  $response = Invoke-WebRequest -Uri $edgeEnterpriseMSIUri -Method Get -ContentType "application/json" -ErrorVariable InvokeWebRequestError
+  $jsonObj = ConvertFrom-Json $([String]::new($response.Content))
+  Write-Host "Succefully retrived data" -ForegroundColor Green
+}
+catch {
+  throw "Could not get MSI data: $InvokeWebRequestError"
+}
 
 # Alternative is to use Invoke-RestMethod to get a Json object directly
 # $jsonObj = Invoke-RestMethod -Uri "https://edgeupdates.microsoft.com/api/products?view=enterprise"
 
-$SelectedIndex = [array]::indexof($jsonObj.Product, "$Channel")
+$selectedIndex = [array]::indexof($jsonObj.Product, "$Channel")
 
-if ([string]::IsNullOrEmpty($ProductVersion)) {
-  Write-host "No version specified, getting the latest for $Channel" -ForegroundColor Green
-  $SelectedVersion = (([Version[]](($jsonObj[$SelectedIndex].Releases | Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform }).ProductVersion) | Sort-Object -Descending)[0]).ToString(4)
-  Write-Host "Latest Version for Chanel $Channel is $SelectedVersion" -ForegroundColor Green
-  $SelectedObject = $jsonObj[$SelectedIndex].Releases | Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform -and $_.ProductVersion -eq $SelectedVersion }
+if (-not $ProductVersion) {
+  try {
+    Write-host "No version specified, getting the latest for $Channel" -ForegroundColor Green
+    $selectedVersion = (([Version[]](($jsonObj[$selectedIndex].Releases |
+      Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform }).ProductVersion) |
+      Sort-Object -Descending)[0]).ToString(4)
+  
+    Write-Host "Latest Version for channel $Channel is $selectedVersion`n" -ForegroundColor Green
+    $selectedObject = $jsonObj[$selectedIndex].Releases |
+      Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform -and $_.ProductVersion -eq $selectedVersion}
+    }
+    catch {
+      throw "Unable to get object from Microsoft. Check your parameters and refer to script help."
+    }
 }
 else {
-  Write-Host "Matching $ProductVersion on Channel $Channel" -ForegroundColor Green
-  $SelectedObject = ($jsonObj[$SelectedIndex].Releases | Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform -and $_.ProductVersion -eq $ProductVersion })
-  $SelectedObject
-  If ($null -eq $SelectedObject) {
-    Write-Host "No version matching $ProductVersion found using Channel $channel and Arch $Architecture!" -ForegroundColor Red
-    break
+  Write-Host "Matching $ProductVersion on channel $Channel" -ForegroundColor Green
+  $selectedObject = ($jsonObj[$selectedIndex].Releases |
+    Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform -and $_.ProductVersion -eq $ProductVersion })
+
+  if (-not $selectedObject) {
+    throw "No version matching $ProductVersion found in $channel channel for $Architecture architecture."
   }
   else {
-    Write-Host "Found matchings version" -ForegroundColor Green
-    $SelectedObject
+    Write-Host "Found matching version`n" -ForegroundColor Green
   }
 }
 
-$FileName = ($SelectedObject.Artifacts.Location -split "/")[-1]
-Write-Host "File to be downloaded $FileName" -ForegroundColor Green
-Write-host "Starting download of $($SelectedObject.Artifacts.Location)" -ForegroundColor Green
+
 if (Test-Path $Folder) {
-  if (Test-Path "$Folder\$FileName" -ErrorAction SilentlyContinue) {
-    If ($Force) {
-      Write-Host "Using Force and to Download and overwrite existing file." -ForegroundColor Green
-      Invoke-WebRequest -Uri $SelectedObject.Artifacts.Location -OutFile "$Folder\$FileName" -ErrorAction Stop  
-    }
-    else {
-      Write-Host "$Folder\$FileName already exists!" -ForegroundColor Yellow
-      $OverWrite = Read-Host -Prompt "Press Y to overwrite or N to quit." 
-      if ($OverWrite -eq "Y") {
-        Write-Host "Starting Download" -ForegroundColor Green
-        Invoke-WebRequest -Uri $SelectedObject.Artifacts.Location -OutFile "$Folder\$FileName" -ErrorAction Stop
+  foreach ($artifacts in $selectedObject.Artifacts) {
+    # Not showing the progress bar in Invoke-WebRequest is quite a bit faster than default
+    $ProgressPreference = 'SilentlyContinue'
+    
+    Write-host "Starting download of: $($artifacts.Location)" -ForegroundColor Green
+    # Work out file name
+    $fileName = Split-Path $artifacts.Location -Leaf
+
+    if (Test-Path "$Folder\$fileName" -ErrorAction SilentlyContinue) {
+      if ($Force) {
+        Write-Host "Force specified. Will attempt to download and overwrite existing file." -ForegroundColor Green
+        try {
+          Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName"
+        }
+        catch {
+          throw "Attempted to download file, but failed: $error[0]"
+        }    
       }
       else {
-        Write-Host "User aborted, will not overwrite file." -ForegroundColor Red  
-        break
+        # CR-someday: There should be an evaluation of the file version, if possible. Currently the function only
+        # checks if a file of the same name exists, not if the versions differ
+        Write-Host "$Folder\$fileName already exists!" -ForegroundColor Yellow
+
+        do {
+          $overWrite = Read-Host -Prompt "Press Y to overwrite or N to quit."
+        }
+        # -notmatch is case insensitive
+        while ($overWrite -notmatch '^y$|^n$')
+        
+        if ($overWrite -match '^y$') {
+          Write-Host "Starting Download" -ForegroundColor Green
+          try {
+            Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName"
+          }
+          catch {
+            throw "Attempted to download file, but failed: $error[0]"
+          }
+        }
+        else {
+          throw "File already exists and user chose not to overwrite"
+        }
       }
     }
+    else {
+      Write-Host "Starting Download" -ForegroundColor Green
+      try {
+        Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName"
+      }
+      catch {
+        throw "Attempted to download file, but failed: $error[0]"
+      }
+    }
+    if (((Get-FileHash -Algorithm $artifacts.HashAlgorithm -Path "$Folder\$fileName").Hash) -eq $artifacts.Hash) {
+      Write-Host "Calculated checksum matches known checksum`n" -ForegroundColor Green
+    }
+    else {
+      Write-Warning "Checksum mismatch!"
+      Write-Warning "Expected Hash: $($artifacts.Hash)"
+      Write-Warning "Downloaded file Hash: $((Get-FileHash -Algorithm $($artifacts.HashAlgorithm) -Path "$Folder\$fileName").Hash)`n"
+    }
   }
-  else {
-    Invoke-WebRequest -Uri $SelectedObject.Artifacts.Location -OutFile "$Folder\$FileName" -ErrorAction Stop
-  }
-  
 }
 else {
-  Write-Host "Folder $Folder does not exist" -ForegroundColor Red
-  break
+  throw "Folder $Folder does not exist"
 }
-
-if (((Get-FileHash -Algorithm $SelectedObject.Artifacts.HashAlgorithm -Path "$Folder\$FileName").Hash) -eq $SelectedObject.Artifacts.Hash) {
-  Write-Host "CheckSum OK" -ForegroundColor Green
-}
-else {
-  Write-host "Checksum mismatch!" -ForegroundColor Red
-  Write-Host "Expected Hash        : $($SelectedObject.Artifacts.Hash)" -ForegroundColor Yellow
-  Write-Host "Downloaded file Hash : $((Get-FileHash -Algorithm $SelectedObject.Artifacts.HashAlgorithm -Path "$Folder\$FileName").Hash)" -ForegroundColor Yellow
-}
-Write-Host " -- Completed --" -ForegroundColor Green
+Write-Host "-- Script Completed: File Downloaded -- " -ForegroundColor Green
