@@ -39,8 +39,8 @@
   .\Get-EdgeEnterpriseMSI.ps1 -Channel Beta -Folder D:\SourceCode\PowerShell\Div -Force
 
 #>
+[CmdletBinding()]
 param(
-  [CmdletBinding()]
   [Parameter(Mandatory = $True, HelpMessage = 'Channel to download, Valid Options are: Dev, Beta, Stable, EdgeUpdate, Policy')]
   [ValidateSet('Dev', 'Beta', 'Stable', 'EdgeUpdate', 'Policy')]
   [string]$Channel,
@@ -182,7 +182,8 @@ if (Test-Path $Folder) {
           }
         }
         else {
-          throw "File already exists and user chose not to overwrite"
+          Write-Host "File already exists and user chose not to overwrite, exiting script." -ForegroundColor Red
+          exit
         }
       }
     }
