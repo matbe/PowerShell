@@ -26,10 +26,19 @@
   Overwrites the file without asking.
 
 .NOTES
-  Version:        1.1
+  Version:        1.2
   Author:         Mattias Benninge
   Creation Date:  2020-07-01
-  Purpose/Change: Initial script development
+
+  Version history:
+
+  1.0 -   Initial script development
+  1.1 -   Fixes and improvements by @KarlGrindon
+          - Script now handles multiple files for e.g. MacOS Edge files
+          - Better error handling and formating
+          - URI Validation
+  1.2 -   Better compability on servers (force TLS and remove dependency to IE)
+
   
   https://docs.microsoft.com/en-us/mem/configmgr/apps/deploy-use/deploy-edge
 
@@ -88,9 +97,12 @@ elseif ($Channel -eq "EdgeUpdate" -and ($Architecture -ne "x86" -or $Platform -e
   $Platform = "Windows"
 }
 
+Write-Host "Enabling connection over TLS for better compability on servers" -ForegroundColor Green
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
 # Test if HTTP status code 200 is returned from URI
 try {
-  Invoke-WebRequest $edgeEnterpriseMSIUri | where StatusCode -match 200 | Out-Null
+  Invoke-WebRequest $edgeEnterpriseMSIUri -UseBasicParsing | Where-Object StatusCode -match 200 | Out-Null
 }
 catch {
   throw "Unable to get HTTP status code 200 from $edgeEnterpriseMSIUri. Does the URL still exist?"
@@ -100,7 +112,7 @@ Write-Host "Getting available files from $edgeEnterpriseMSIUri" -ForegroundColor
 
 # Try to get JSON data from Microsoft
 try {
-  $response = Invoke-WebRequest -Uri $edgeEnterpriseMSIUri -Method Get -ContentType "application/json" -ErrorVariable InvokeWebRequestError
+  $response = Invoke-WebRequest -Uri $edgeEnterpriseMSIUri -Method Get -ContentType "application/json" -UseBasicParsing -ErrorVariable InvokeWebRequestError
   $jsonObj = ConvertFrom-Json $([String]::new($response.Content))
   Write-Host "Succefully retrived data" -ForegroundColor Green
 }
@@ -109,7 +121,7 @@ catch {
 }
 
 # Alternative is to use Invoke-RestMethod to get a Json object directly
-# $jsonObj = Invoke-RestMethod -Uri "https://edgeupdates.microsoft.com/api/products?view=enterprise"
+# $jsonObj = Invoke-RestMethod -Uri "https://edgeupdates.microsoft.com/api/products?view=enterprise" -UseBasicParsing
 
 $selectedIndex = [array]::indexof($jsonObj.Product, "$Channel")
 
@@ -117,16 +129,16 @@ if (-not $ProductVersion) {
   try {
     Write-host "No version specified, getting the latest for $Channel" -ForegroundColor Green
     $selectedVersion = (([Version[]](($jsonObj[$selectedIndex].Releases |
-      Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform }).ProductVersion) |
-      Sort-Object -Descending)[0]).ToString(4)
+            Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform }).ProductVersion) |
+        Sort-Object -Descending)[0]).ToString(4)
   
     Write-Host "Latest Version for channel $Channel is $selectedVersion`n" -ForegroundColor Green
     $selectedObject = $jsonObj[$selectedIndex].Releases |
-      Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform -and $_.ProductVersion -eq $selectedVersion}
-    }
-    catch {
-      throw "Unable to get object from Microsoft. Check your parameters and refer to script help."
-    }
+    Where-Object { $_.Architecture -eq $Architecture -and $_.Platform -eq $Platform -and $_.ProductVersion -eq $selectedVersion }
+  }
+  catch {
+    throw "Unable to get object from Microsoft. Check your parameters and refer to script help."
+  }
 }
 else {
   Write-Host "Matching $ProductVersion on channel $Channel" -ForegroundColor Green
@@ -155,7 +167,7 @@ if (Test-Path $Folder) {
       if ($Force) {
         Write-Host "Force specified. Will attempt to download and overwrite existing file." -ForegroundColor Green
         try {
-          Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName"
+          Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName" -UseBasicParsing
         }
         catch {
           throw "Attempted to download file, but failed: $error[0]"
@@ -175,7 +187,7 @@ if (Test-Path $Folder) {
         if ($overWrite -match '^y$') {
           Write-Host "Starting Download" -ForegroundColor Green
           try {
-            Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName"
+            Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName" -UseBasicParsing
           }
           catch {
             throw "Attempted to download file, but failed: $error[0]"
@@ -190,7 +202,7 @@ if (Test-Path $Folder) {
     else {
       Write-Host "Starting Download" -ForegroundColor Green
       try {
-        Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName"
+        Invoke-WebRequest -Uri $artifacts.Location -OutFile "$Folder\$fileName" -UseBasicParsing
       }
       catch {
         throw "Attempted to download file, but failed: $error[0]"
