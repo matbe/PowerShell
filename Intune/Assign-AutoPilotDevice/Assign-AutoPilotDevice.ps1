@@ -27,6 +27,8 @@
   Creation Date:  2020-01-07
   Purpose/Change: Initial script development
   Credits to Michael Niehaus for parts that gets and creates the hardware hash for AutoPilot. https://www.powershellgallery.com/packages/Get-WindowsAutoPilotInfo/1.6 created by Michael Niehaus. 
+    - v1.1        MB - Bugfix where you could not select a grouptag if there were more than 10 selections. Added support for multipage grouptag menu.
+    - v1.2        MB - Changed to 'groupTag' from 'orderIdentifier', MS have updated the Graph API and orderIdentifier was deprectated.
 
 .EXAMPLE
   Assign-AutoPilotDevice.ps1 
@@ -38,7 +40,10 @@ Param (
     [Parameter(Mandatory = $False)] [switch] $Output = $true, 
     [Parameter(Mandatory = $False)] [switch] $GroupTag = $true, 
     [Parameter(Mandatory = $False)] [string] $Tenant = "<tenant>.onmicrosoft.com",
+    [Parameter(Mandatory = $False)] [string] $UserDomain = '@<yourdomain.com>', # this will add the specified domain to your username. So instead of typing 'john.doe@contoso.com', it is enough to type 'john.doe'
     [Parameter(Mandatory = $False)] [switch] $RestartOnSucess = $true,
+    [Parameter(Mandatory = $False)] [switch] $GroupTagFromAzure = $false, # If set to true it will get the grouptags from AzureAD groups instead of using the file.
+    [Parameter(Mandatory = $False)] [string] $GroupTagPrefix = "PP-", # Prefix for the Groups in Azure that will be used to populate grouptags. Description = Friendly Name and the dynamic query is parsed to extract the group tag.
     [Parameter(Mandatory = $False)] [switch] $Force = $false
 )
 
@@ -48,6 +53,7 @@ $script:Tenant = $Tenant
 
 #Any Global Declarations go here
 $script:graphApiVersion = "Beta"
+[int]$MenuSteps = 20 # Max numbers of grouptags to show on one page
 
 try {
     import-Module ".\AzureAD"
@@ -384,13 +390,34 @@ function Show-Menu {
 
     #>
     param (
-        [string]$Title = ""
+        [string]$Title = "",
+        [int]$StartValue
     )
     Clear-Host
     Write-Host "================ $Title ================"
 
-    for ($i = 0; $i -lt $grouptagselection.Count; $i++) {
-        Write-Host "$i`: $($grouptagselection[$i].Keys)"
+    if ($grouptagselection.Count -gt $MenuSteps) {
+        $maxselection = $StartValue + $MenuSteps
+        for ($i = 0 + $StartValue; $i -lt $maxselection; $i++) {
+            If ($GroupTagFromAzure) { Write-Host "$i`: $($script:grouptagselection[$i].Key)" }
+            else { Write-Host "$i`: $($script:grouptagselection[$i].Keys)" }
+
+        }
+        if ((($StartValue / $MenuSteps) + 1) -eq 1) {
+            Write-host $(($StartValue / $MenuSteps) + 1) "/"  $([Math]::Ceiling($grouptagselection.Count / $MenuSteps)) " Press 'N' for next Page"
+        }
+        elseif ((($StartValue / $MenuSteps) + 1) -eq $([Math]::Ceiling($grouptagselection.Count / $MenuSteps))) {
+            Write-host $(($StartValue / $MenuSteps) + 1) "/"  $([Math]::Ceiling($grouptagselection.Count / $MenuSteps)) " Press 'P' for Previous Page" 
+        }
+        else {
+            Write-host $(($StartValue / $MenuSteps) + 1) "/"  $([Math]::Ceiling($grouptagselection.Count / $MenuSteps)) " Press 'N' for next Page or 'P' for Previous Page" 
+        }
+    }
+    else {
+        for ($i = 0; $i -lt $grouptagselection.Count; $i++) {
+            If ($GroupTagFromAzure) { Write-Host "$i`: $($script:grouptagselection[$i].Key)" }
+            else { Write-Host "$i`: $($script:grouptagselection[$i].Keys)" }
+        }
     }
     Write-Host "Q: Press 'Q' to quit."
 }
@@ -398,25 +425,102 @@ function Show-Menu {
 #endregion ---------------------------------------------------[Functions]------------------------------------------------------------
 
 #-----------------------------------------------------------[Execution]------------------------------------------------------------
+If ($script:Tenant -eq "") {
+    $script:Tenant = Read-Host -Prompt "Please specify Tenant to connect to."
+}
+
+Write-Host "Trying to connect to $script:Tenant, do you want to continue? Y or N?" -ForegroundColor Yellow
+        
+$Confirm = read-host
+if ($Confirm -eq "y" -or $Confirm -eq "Y") {
+    Write-Host "Connecting to $script:Tenant.."
+    Write-Host    
+}
+else {
+    Write-Host "Aborting..." -ForegroundColor Red
+    Write-Host
+    break
+}
+
+#region Authentication
+# Checking if authToken exists before running authentication
+if ($global:authToken) {
+    # Setting DateTime to Universal time to work in all timezones
+    $DateTime = (Get-Date).ToUniversalTime()
+    # If the authToken exists checking when it expires
+    $TokenExpires = ($authToken.ExpiresOn.datetime - $DateTime).Minutes
+    if ($TokenExpires -le 0) {
+        write-host "Authentication Token expired" $TokenExpires "minutes ago" -ForegroundColor Yellow
+        write-host
+        # Defining User Principal Name if not present
+        if ($null -eq $User -or $User -eq "") {
+            $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
+            If(!($User -match '@')){ $User = $User + $UserDomain}
+            Write-Host $User
+        }
+        $global:authToken = Get-AuthToken -User $User
+    }
+}
+# Authentication doesn't exist, calling Get-AuthToken function
+else {
+    if ($null -eq $User -or $User -eq "") {
+        $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
+        If(!($User -match '@')){ $User = $User + $UserDomain}
+        Write-Host $User
+    }
+    # Getting the authorization token
+    $global:authToken = Get-AuthToken -User $User
+}
+#endregion Authentication
+
 If ($GroupTag) {
+    If ($GroupTagFromAzure)
+    { 
+        $uri = 'https://graph.microsoft.com/Beta/groups' + '?$filter=startswith(displayName,''' + $GroupTagPrefix + ''')'
+        $groups = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+        $script:grouptagselection = [ordered]@{}
+        $grouptagsarray = @{}
+        $pattern = '\[OrderID\]:(.*?)"'
+        Foreach($group in $groups)
+        {
+            $grouptagsarray[$($group.description)] = [regex]::match($group.membershipRule, $pattern).Groups[1].Value
+        }
+        $script:grouptagselection = $grouptagsarray.GetEnumerator() | Sort-Object -Property key
+        
+    }
+    else {
+        $script:grouptagselection = [ordered]@{}
+        $grouptagsarray = (Get-Content .\GroupTags.txt) | Sort-Object
+        $grouptagsarray = $grouptagsarray.Where( { $_ -ne "" })
+        $script:grouptagselection = $grouptagsarray | ConvertFrom-StringData
+    }
 
-    $grouptagselection = (Get-Content .\GroupTags.txt) | Sort-Object
-    $grouptagselection = $grouptagselection.Where( { $_ -ne "" })
-    $grouptagselection = $grouptagselection | ConvertFrom-StringData
-
+    [int]$StartValue = [int]0
     do {
-        Show-Menu -Title GroupTag
+        Show-Menu -Title GroupTag -StartValue $StartValue
+
         #Remove $selection if it has previous been casted as an Int
         Remove-Variable -Name selection -Force -ErrorAction SilentlyContinue
-        
+
         $selection = Read-Host "Please make a selection"
-        
+       
         # Make sure that $selection is an [int] if a number has been selected.
         if($selection -match "[0-9]"){ [int]$selection = $selection}
-   
+    
         If ($selection -ge 0 -and $selection -lt $grouptagselection.Count) {
-           
-            $script:GroupTagSelected = (($grouptagselection[[int]($selection)]).Values | Out-String).Trim()
+		   
+            If($GroupTagFromAzure){ $script:GroupTagSelected = (($grouptagselection[[int]($selection)]).Value | Out-String).Trim() }
+            else{ $script:GroupTagSelected = (($grouptagselection[[int]($selection)]).Values | Out-String).Trim() }
+        }
+        Elseif (($selection -eq "n" -and (($StartValue + $MenuSteps) -le ($grouptagselection.Count)))) {
+            $StartValue = $StartValue + $MenuSteps
+            if ($StartValue -ge $grouptagselection.Count) { $StartValue = $grouptagselection.Count }
+            Write-host "Next." -ForegroundColor Red
+        }
+        Elseif (($selection -eq "p" -and (($StartValue - $MenuSteps) -ge 0))) {
+            $StartValue = $StartValue - $MenuSteps
+            if ($StartValue -le 0) { $StartValue = 0 }
+            Write-host "Next." -ForegroundColor Red
         }
         Elseif ($selection -eq "q") {
             Write-host "Quiting script." -ForegroundColor Red
@@ -427,12 +531,12 @@ If ($GroupTag) {
             Write-host "Not a valid selection, try again." -ForegroundColor Red
             pause
         }
-   
+       
     }
-    until ($selection -eq 'q' -or ($selection -ge 0 -and $selection -lt $grouptagselection.Count))
+    until ($selection -eq 'q' -or ($selection -ge 0 -and $selection -lt $script:grouptagselection.Count))
 }
 else {
-	$script:GroupTagSelected = ""
+    $script:GroupTagSelected = ""
 }
 
 #region AutoPilot
@@ -499,7 +603,7 @@ if ($Output) {
 
 $AutopilotDevice = [ordered]@{
     '@odata.type'               = '#microsoft.graph.importedWindowsAutopilotDeviceIdentity'
-    'orderIdentifier'           = if ($($computers[0]."Group Tag")) { "$($computers[0]."Group Tag".ToString())" } else { "" }
+    'groupTag'           = if ($($computers[0]."Group Tag")) { "$($computers[0]."Group Tag".ToString())" } else { "" }
     'serialNumber'              = $computers[0]."Device Serial Number"
     'productKey'                = $computers[0]."Windows Product ID" 
     'hardwareIdentifier'        = $computers[0]."Hardware Hash"
@@ -516,52 +620,7 @@ $AutopilotDevice = [ordered]@{
 $AutopilotDeviceJSON = $AutopilotDevice | ConvertTo-Json
 #endregion AutoPilot
 
-If ($script:Tenant -eq "") {
-    $script:Tenant = Read-Host -Prompt "Please specify Tenant to connect to."
-}
-
-Write-Host "Trying to connect to $script:Tenant, do you want to continue? Y or N?" -ForegroundColor Yellow
-        
-$Confirm = read-host
-if ($Confirm -eq "y" -or $Confirm -eq "Y") {
-    Write-Host "Connecting to $script:Tenant.."
-    Write-Host    
-}
-else {
-    Write-Host "Aborting..." -ForegroundColor Red
-    Write-Host
-    break
-}
-
-#region Authentication
-# Checking if authToken exists before running authentication
-if ($global:authToken) {
-    # Setting DateTime to Universal time to work in all timezones
-    $DateTime = (Get-Date).ToUniversalTime()
-    # If the authToken exists checking when it expires
-    $TokenExpires = ($authToken.ExpiresOn.datetime - $DateTime).Minutes
-    if ($TokenExpires -le 0) {
-        write-host "Authentication Token expired" $TokenExpires "minutes ago" -ForegroundColor Yellow
-        write-host
-        # Defining User Principal Name if not present
-        if ($null -eq $User -or $User -eq "") {
-            $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
-            Write-Host
-        }
-        $global:authToken = Get-AuthToken -User $User
-    }
-}
-# Authentication doesn't exist, calling Get-AuthToken function
-else {
-    if ($null -eq $User -or $User -eq "") {
-        $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
-        Write-Host
-    }
-    # Getting the authorization token
-    $global:authToken = Get-AuthToken -User $User
-}
-#endregion Authentication
-
+Write-Host "Grouptag '$($script:GroupTagSelected)' is selected for Device : $serial"
 Write-host "Importing device and waiting until import is complete"
 $newdevice = Add-AutoPilotDevice($AutopilotDeviceJSON)
 
@@ -626,13 +685,24 @@ If ((Get-AutoPilotDevice($intunedeviceID)).deploymentProfileAssignmentStatus -eq
     Write-Warning "Something went wrong, check the Intune console for more information"
 }
 else {
-    write-host "Triggers a manual Windows Autopilot enrollment sync"
+    write-host "Waiting 60 seconds to trigger a manual Windows Autopilot enrollment sync"
+    start-sleep -Seconds 60
     $uri = 'https://graph.microsoft.com/Beta/deviceManagement/windowsAutopilotSettings/sync'
-    Invoke-RestMethod -Uri $uri -Headers $authToken -Method POST |Out-Null
+    Invoke-RestMethod -Uri $uri -Headers $authToken -Method POST | Out-Null
     write-host "Complete! Device imported and assigned to $($computers[0]."Group Tag".ToString()), serial number:"
     write-host $computers[0]."Device Serial Number"
+    write-host "Deleting Autopilot registrykeys and folders"
+    try{
+        if(Test-Path -Path "C:\Windows\Provisioning\AutoPilot"){Remove-Item "C:\Windows\Provisioning\AutoPilot" -Recurse -Force}
+        if(Test-Path -Path "C:\Windows\ServiceState\AutoPilot"){Remove-Item "C:\Windows\ServiceState\AutoPilot" -Recurse -Force}
+        if(Test-Path -Path "HKLM:\Software\Microsoft\Provisioning\AutopilotPolicy"){Remove-Item "HKLM:\Software\Microsoft\Provisioning\AutopilotPolicy" -Recurse -Force}
+        if(Test-Path -Path "HKLM:\Software\Microsoft\Provisioning\Diagnostics\Autopilot"){Remove-Item "HKLM:\Software\Microsoft\Provisioning\Diagnostics\Autopilot" -Recurse -Force}
+        Write-host "All Autopilot folders and registry keys was deleted sucessfully."
+    }
+    catch{
+        Write-Warning "Warning: Could not delete all folders or registrykeys!!"
+    }
     write-host "This Computer will reboot in 5 minutes, press Ctrl+C to abort!" -ForegroundColor Green
     Start-Sleep -Seconds 300
     If ($RestartOnSucess) { Restart-Computer -Force }
 }
-  
