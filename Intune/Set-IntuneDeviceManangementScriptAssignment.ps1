@@ -180,7 +180,7 @@ if ($Respons) {
         # Get group assignment
         if ($group.target."@odata.type" -eq "#microsoft.graph.groupAssignmentTarget") {
             # Verify so the new groupID isn't already assigned.
-            if (!$group.target.groupId -eq $groupID) {
+            if ($group.target.groupId -ne $groupID) {
                 $requestBody.deviceManagementScriptAssignments += @{
                     "target" = $group.target
                 }
