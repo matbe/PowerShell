@@ -34,14 +34,14 @@
 #>
 #region --------------------------------------------------[Script Parameters]------------------------------------------------------
 
-#Param (
-#Script parameters go here
-#	[parameter(Mandatory=$true)]
-# [string]$string1,
-# [parameter(Mandatory=$true)]
-# [string]$string2,
-# [switch]$switch
-#)
+Param (
+  [switch]$verbose
+  # Additiona Script parameters go here
+  #	,[parameter(Mandatory=$true)]
+  # [string]$string1
+  # ,[parameter(Mandatory=$true)]
+  # [string]$string2
+)
 
 #endregion -----------------------------------------------[Script Parameters]------------------------------------------------------
 #region --------------------------------------------------[Initialisations]--------------------------------------------------------
@@ -55,7 +55,11 @@
 
 #Any Global Declarations go here
 $maxlogfilesize = 5Mb
-$Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
+try {
+  $Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
+}
+catch {}
+
 
 #endregion -----------------------------------------------[Declarations]-----------------------------------------------------------
 #region --------------------------------------------------[Functions]--------------------------------------------------------------
@@ -71,7 +75,10 @@ Function Start-Log {
   try {
     if (!(Test-Path $FilePath)) {
       ## Create the log file
-      New-Item $FilePath -Type File | Out-Null
+      $filepath = (New-Item $FilePath -Type File).FullName
+    }
+    else {
+      $FilePath = (Get-Item $FilePath).FullName
     }
   
     ## Set the global variable to be used as the FilePath for all subsequent Write-Log
