@@ -84,6 +84,13 @@ Function Start-Log {
     ## Set the global variable to be used as the FilePath for all subsequent Write-Log
     ## calls in this session
     $global:ScriptLogFilePath = $FilePath
+    [int32]$LogTimeZoneBiasInt = [timezone]::CurrentTimeZone.GetUtcOffset([datetime]::Now).TotalMinutes
+    if ($LogTimeZoneBiasInt -ge 0) {
+      [string]$script:LogTimeZoneBias = "+{0:D3}" -f $LogTimeZoneBiasInt
+    }
+    else {
+      [string]$script:LogTimeZoneBias = "{0:D3}" -f $LogTimeZoneBiasInt
+    }
   }
   catch {
     Write-Error $_.Exception.Message
@@ -99,7 +106,8 @@ Function Write-Log {
     [ValidateSet(1, 2, 3)]
     [int]$LogLevel = 1
   )    
-  $TimeGenerated = "$(Get-Date -Format HH:mm:ss).$((Get-Date).Millisecond)+000"
+  [string]$LogTime = (Get-Date -Format 'HH:mm:ss.fff').ToString()
+  [string]$TimeGenerated = $LogTime + $script:LogTimeZoneBias
   $Line = '<![LOG[{0}]LOG]!><time="{1}" date="{2}" component="{3}" context="" type="{4}" thread="" file="">'
   
   if ($MyInvocation.ScriptName) {
